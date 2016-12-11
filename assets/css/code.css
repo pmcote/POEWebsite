@@ -16,4 +16,5 @@ pre > code {
 
 #main > .inner .img-holder img {
 	display: inline-block;
+	max-width: 100%;
 }
