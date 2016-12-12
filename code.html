@@ -42,7 +42,7 @@
 						<h2>Menu</h2>
 						<ul>
 							<li><a href="index.html">Home</a></li>
-							<li><a href="project.html">project</a></li>
+							<li><a href="project.html">Design Process</a></li>
 							<li><a href="mechanical.html">Mechanical</a></li>
 							<li><a href="electrical.html">Electrical</a></li>
 							<li><a href="code.html">Code</a></li>
@@ -59,9 +59,225 @@
 						<div class="inner">
 							<h1>Code</h1>
 							<span class="image main"><img src="images/pic13.jpg" alt="" /></span>
-							<p>Donec eget ex magna. Interdum et malesuada fames ac ante ipsum primis in faucibus. Pellentesque venenatis dolor imperdiet dolor mattis sagittis. Praesent rutrum sem diam, vitae egestas enim auctor sit amet. Pellentesque leo mauris, consectetur id ipsum sit amet, fergiat. Pellentesque in mi eu massa lacinia malesuada et a elit. Donec urna ex, lacinia in purus ac, pretium pulvinar mauris. Curabitur sapien risus, commodo eget turpis at, elementum convallis elit. Pellentesque enim turpis, hendrerit tristique.</p>
-							<p>Lorem ipsum dolor sit amet, consectetur adipiscing elit. Duis dapibus rutrum facilisis. Class aptent taciti sociosqu ad litora torquent per conubia nostra, per inceptos himenaeos. Etiam tristique libero eu nibh porttitor fermentum. Nullam venenatis erat id vehicula viverra. Nunc ultrices eros ut ultricies condimentum. Mauris risus lacus, blandit sit amet venenatis non, bibendum vitae dolor. Nunc lorem mauris, fringilla in aliquam at, euismod in lectus. Pellentesque habitant morbi tristique senectus et netus et malesuada fames ac turpis egestas. In non lorem sit amet elit placerat maximus. Pellentesque aliquam maximus risus, vel venenatis mauris vehicula hendrerit.</p>
-							<p>Interdum et malesuada fames ac ante ipsum primis in faucibus. Pellentesque venenatis dolor imperdiet dolor mattis sagittis. Praesent rutrum sem diam, vitae egestas enim auctor sit amet. Pellentesque leo mauris, consectetur id ipsum sit amet, fersapien risus, commodo eget turpis at, elementum convallis elit. Pellentesque enim turpis, hendrerit tristique lorem ipsum dolor.</p>
+							<h2 id="overview">Overview</h2>
+              <p>This page is dedicated to explaining the software used for our game logic, where gyro sensor data is the input and LED control represents game state. The premise of our game is an endless run where the player must avoid crashing by tilting towards gaps in upcoming walls of light. For those interested, the physical system is described <a href="mechanical.html">here</a>, but all we need to know for the software component of the experience is our input and expected output.</p>
+
+              <p>Our game is directed by a <a href="http://playground.arduino.cc/Main/MPU-6050">MPU-6050</a> attached to a sideways rocking chair sending along yaw, pitch and roll information. Once this data is processed and the player's lean direction resolved, the game logic updates their digital position with respect to the gap they're aiming for. This is reflected to the player by lighting vertical LED strips in front of them, turning off a group that represents the gap they need to pass through.</p>
+
+
+              <h2 id="sensor">Gyro Sensor Data</h2>
+              <p>We used the library <a href="https://github.com/jrowberg/i2cdevlib">I2Cdevlib</a> to handle input from the MPU-6050 sensor. Although it's able to handle various kinds of I2C communication, we only need to handle one axis of rotation for the MPU-6050 so we copied over only the chunks of <a href="https://github.com/jrowberg/i2cdevlib/blob/master/Arduino/MPU6050/examples/MPU6050_DMP6/MPU6050_DMP6.ino">this example</a> that applied to our project. If you're not working with an Arduino or a MPU-6050 I would still encourage you to explore the Github repository for examples that fit your needs as there are many different flavors available.</p>
+
+
+              <h3 id="library-import">Library Import</h3>
+              <p>In order to get started, you must download a local copy of the library and add it to your Arduino IDE. Github allows you to download <code>.zip</code> files so a straightforward way to do this is to download the whole repository and import it through your Arduino IDE toolbar:<br>
+              <pre><code class="css">Sketch > Include Library > Add .ZIP Library...</code></pre>
+              The folder you want to select is <code>MPU6050/</code> which is located in the <code>Arduino/</code> folder. Once this is done you may need to restart the IDE, but you'll know it worked if you can navigate to:<br><br>
+              <pre><code class="css">File > Examples > MPU6050 > ...</code></pre>
+              <p>If all that works, you're ready to rock!</p>
+
+
+              <h3 id="gyro-globals">Global Variables</h3>
+              <p>First off we have a few chunks of variables declared at the top of the file, the following is specific to the I2Cdevlib code. There's not too much to say here besides the comments in the snippet, move on whenever you're ready.</p>
+
+
+              <pre><code class="c++">#include "I2Cdev.h"
+#include "MPU6050_6Axis_MotionApps20.h"
+#if I2CDEV_IMPLEMENTATION == I2CDEV_ARDUINO_WIRE
+    #include "Wire.h"
+#endif
+
+
+// class default I2C address is 0x68
+MPU6050 mpu;
+#define OUTPUT_READABLE_YAWPITCHROLL
+#define INTERRUPT_PIN 2  // use pin 2 on Arduino Uno &amp; most boards
+
+
+// MPU control/status vars
+bool dmpReady = false;  // set true if DMP init was successful
+uint8_t mpuIntStatus;   // holds actual interrupt status byte from MPU
+uint8_t devStatus;      // return status after each device operation (0 = success, !0 = error)
+uint16_t packetSize;    // expected DMP packet size (default is 42 bytes)
+uint16_t fifoCount;     // count of all bytes currently in FIFO
+uint8_t fifoBuffer[64]; // FIFO storage buffer
+
+
+// orientation/motion vars
+Quaternion q;           // [w, x, y, z]         quaternion container
+VectorFloat gravity;    // [x, y, z]            gravity vector
+float ypr[3];           // [yaw, pitch, roll]   yaw/pitch/roll container and gravity vector
+
+
+volatile bool mpuInterrupt = false;     // indicates whether MPU interrupt pin has gone high
+void dmpDataReady() {
+    mpuInterrupt = true;
+}</code></pre>
+
+
+              <h3 id="gyro-setup">I2Cdevlib Setup</h3>
+              <p>Next, we have the code in our <code>setup()</code> function within the Arduino sketch. Again, this code is directly from the <a href="https://github.com/jrowberg/i2cdevlib/blob/master/Arduino/MPU6050/examples/MPU6050_DMP6/MPU6050_DMP6.ino">example file</a> on Github and unless you need to customize it, it's fairly reasonable to stick with the initialization procedure put forth by the original developer. We only removed some debug statements and logic that waits for user input to start taking data.</p>
+              <pre><code class="c++">setup() {
+  ...
+  // Gyro setup
+  // join I2C bus (I2Cdev library doesn't do this automatically)
+  #if I2CDEV_IMPLEMENTATION == I2CDEV_ARDUINO_WIRE
+    Wire.begin();
+    Wire.setClock(400000); // 400kHz I2C clock. Comment this line if having compilation difficulties
+  #elif I2CDEV_IMPLEMENTATION == I2CDEV_BUILTIN_FASTWIRE
+    Fastwire::setup(400, true);
+  #endif
+
+
+  while (!Serial); // wait for Leonardo enumeration, others continue immediately
+
+
+  mpu.initialize();
+  pinMode(INTERRUPT_PIN, INPUT);
+  Serial.println(mpu.testConnection() ? F("MPU6050 connection successful") : F("MPU6050 connection failed"));
+
+
+  // load and configure the DMP
+  devStatus = mpu.dmpInitialize();
+
+
+  // supply your own gyro offsets here, scaled for min sensitivity
+  mpu.setXGyroOffset(220);
+  mpu.setYGyroOffset(76);
+  mpu.setZGyroOffset(-85);
+  mpu.setZAccelOffset(1788); // 1688 factory default for my test chip
+
+
+  // make sure it worked (returns 0 if so)
+  if (devStatus == 0) {
+    // turn on the DMP, now that it's ready
+    mpu.setDMPEnabled(true);
+
+
+    // enable Arduino interrupt detection
+    attachInterrupt(digitalPinToInterrupt(INTERRUPT_PIN), dmpDataReady, RISING);
+    mpuIntStatus = mpu.getIntStatus();
+
+
+    dmpReady = true;
+    // get expected DMP packet size for later comparison
+    packetSize = mpu.dmpGetFIFOPacketSize();
+  } else {
+    // ERROR! (if it's going to break, usually the code will be 1)
+    // 1 = initial memory load failed, 2 = DMP configuration updates failed
+    Serial.println(devStatus);
+  }
+  ...
+}</code></pre>
+
+              <h3 id="gyro-data">Reading Data</h3>
+              <p>Finally we have the actual reading of the data! It begins with a fair amount of status checking to make sure that data is ready to be sent. What happens here is that a First In, First Out buffer stores data so that it's read in the order it was written.</p>
+
+
+              <div class="img-holder">
+                <img alt="image of fifo buffer" src="http://4.bp.blogspot.com/-Qmk1CwfTJsQ/UM4d371wzBI/AAAAAAAABug/7lxQ7ssg-8M/s1600/FIFO+Buffer.png">
+              </div>
+              <br>
+              <p>Since it's possible for the buffer to overflow if code doesn't run consistently each loop, it's important to check and make sure everything's alright before trying to get data. The actual value reading happens at the bottom of this snippet once the buffer has been validated. All of this update is run each time the Arduino's main loop is run.</p>
+
+
+<pre><code class="c++">void updateGyro() {
+  // If programming failed, don't try to do anything
+  if (!dmpReady) return;
+
+
+  // Wait for MPU interrupt or extra packet(s) available
+  while (!mpuInterrupt &amp;&amp; fifoCount < packetSize) {}
+
+
+  // Reset interrupt flag and get INT_STATUS byte
+  mpuInterrupt = false;
+  mpuIntStatus = mpu.getIntStatus();
+
+
+  // Get current FIFO count
+  fifoCount = mpu.getFIFOCount();
+
+
+  // Check for overflow (this should never happen unless our code is too inefficient)
+  if ((mpuIntStatus &amp; 0x10) || fifoCount == 1024) {
+      // Reset so we can continue cleanly
+      mpu.resetFIFO();
+      Serial.println(F("FIFO overflow!"));
+
+
+  // Otherwise, check for DMP data ready interrupt (this should happen frequently)
+  } else if (mpuIntStatus &amp; 0x02) {
+      // Wait for correct available data length, should be a VERY short wait
+      while (fifoCount < packetSize) fifoCount = mpu.getFIFOCount();
+
+
+      // Read a packet from FIFO
+      mpu.getFIFOBytes(fifoBuffer, packetSize);
+
+      // Track FIFO count here in case there is > 1 packet available
+      // (this lets us immediately read more without waiting for an interrupt)
+      fifoCount -= packetSize;
+
+
+      // Get Yaw, Pitch, Roll information
+      #ifdef OUTPUT_READABLE_YAWPITCHROLL
+          // Display Euler angles in degrees
+          mpu.dmpGetQuaternion(&amp;q, fifoBuffer);
+          mpu.dmpGetGravity(&amp;gravity, &amp;q);
+          mpu.dmpGetYawPitchRoll(ypr, &amp;q, &amp;gravity);
+          pitch = ypr[1] * 180/M_PI;  // Extract pitch specifically
+      #endif
+  }
+}</code></pre>
+              <p>Now that we have the player's tilt information we can update the game state and afterwards show the player using our LEDs!</p>
+
+
+              <h2 id="game">Game Logic</h2>
+              <p>This section will cover how the game is structured and trace through the various steps involved in each cycle of updates.</p>
+
+
+              <h3 id="game-globals">Global Variables</h3>
+              <p>The globals used in our game are all numbers used in 3 main contexts: timing, the course (walls and the space between them) and player position within the course. See the comments for explanations of each variable, and note that we can use <code>byte</code> instead of <code>int</code> wherever we know the number won't exceed 255. We use <code>unsigned long</code> for the counters because they will be updated using <code>millis()</code>, which uses this datatype for storing milliseconds.</p>
+
+
+              <pre><code class="c++">// Timing
+byte updateThreshold = 100;  // Time between all game logic updates
+unsigned long lastUpdate,  // Counter for all game logic updates
+  lastWallReset;  // Counter used to tell how long player has been between a pair of walls
+
+
+// Course setup
+byte wallSegments = 16,  // Number of "lanes", also the horizontal resolution of LED strips
+  wall[16];  // A byte array that carries the state of each segment
+int wallWidth = 1000;  // Wall width in digital coordinates, important for tilt movement
+int laneLength = 200,  // Length player travels between walls
+  laneWidth = wallWidth/wallSegments;  // Used in lane switching calculations
+
+
+// Position
+byte velocity = 20,  // Player velocity
+  gapSize = 0,  // Size of gap in wall
+  gapCenter = wallSegments/2;  // Where the center of gap is in wall, starts in middle
+int xPos = 0,  // Player position within a single lane
+  stepSize = 40,  // How far they move when tilting
+  pitch;  // Tilt information provided by gyro sensor readings</code></pre>
+
+
+Game Setup
+The setup required for the game is quite small besides running a single update to initialize (which will be covered in the following section). Aside from that, a channel is chosen for Serial communication and the counters used throughout are initialized.
+
+
+void setup() {
+  Serial.begin(115200);  // Start Serial communication
+  ...
+  update();  // Run a cycle of the main game logic
+
+
+  lastUpdate = millis();  // Set reference time for game logic updates, gets reset every loop
+  lastWallReset = millis();  // Similar but for when players pass walls
+}
+
 						</div>
 					</div>
 
