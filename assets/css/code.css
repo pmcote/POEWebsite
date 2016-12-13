@@ -1,0 +1,24 @@
+pre {
+	scroll: auto;
+	width: 100%;
+}
+
+pre > code {
+	padding: 20px 15px !important;
+	border: none;
+	margin: 0px;
+}
+
+#main > .inner .img-holder {
+	text-align: center;
+	width: 100%;
+}
+	#main > .inner .img-holder img {
+		display: inline-block;
+		max-width: 100%;
+	}
+
+#main > .inner a {
+	color: white;
+	border-bottom: 1px dotted white;
+}
