@@ -136,15 +136,11 @@ void setup() {
 /*******************************************************************************************************************/
 void loop() {
   updateGyro();
-  // rgbLedRainbow(wallSegments, 5, 5, wallSegments); // For testing, very pretty
-  
   // Avoid running game logic too often
   if (millis() - lastUpdate > updateThreshold) {
     lastUpdate = millis();  // Clear counter
-    
     // Run game logic to determine which lights should be on or off
     update(); 
-
     // Actually change state of LEDs using ShiftPWM.
     for (int i=0; i<wallSegments; i++) {
       ShiftPWM.SetRGB(i, 0, 0, wall[i] * 255);
@@ -162,8 +158,7 @@ void update() {
   int distanceTravelled = (float)velocity * (float)(millis() - lastWallReset)/1000.0f;
   gapSize = 2 * (distanceTravelled / (laneLength/6));
   
-  if (distanceTravelled >= laneLength) {
-    // Player has reached wall
+  if (distanceTravelled >= laneLength) { // Player has reached wall
     if (abs(wallSegments/2 - gapCenter) < 2) {
       // Made it through the gap!
       resetStage();
@@ -197,7 +192,7 @@ void updatePos() {
   if (abs(xPos) > laneWidth/2) {
     int flip = xPos/abs(xPos);  // Gets 1 or -1 depending on direction
     gapCenter += flip;  // Moves into new lane by setting relative position of gap
-    xPos = -xPos + (int)(flip * (float)laneWidth/(float)wallSegments); // Start away from edge in "new lane"
+    xPos = -xPos + (flip * (step * 2)); // Start away from edge in "new lane"
   }
 }
 
@@ -206,7 +201,6 @@ void resetStage() {
   lastWallReset = millis();  // Clear timer
   gapCenter = random(3, wallSegments - 3);  // Randomly set new gap
   xPos = 0;  // Reset X position
-  refreshWall(0);  // Set all LEDs to turn off
 }
 
 void runEndgame() {

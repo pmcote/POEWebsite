@@ -13,8 +13,12 @@ pre > code {
 	text-align: center;
 	width: 100%;
 }
+	#main > .inner .img-holder img {
+		display: inline-block;
+		max-width: 100%;
+	}
 
-#main > .inner .img-holder img {
-	display: inline-block;
-	max-width: 100%;
+#main > .inner a {
+	color: white;
+	border-bottom: 1px dotted white;
 }
